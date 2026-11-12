@@ -1,14 +1,28 @@
-# Users.au Knowledge Base · Users.au 知识库
+# Users.au documentation
 
-Guides for connecting applications to Users.au sign-in.
-将应用接入 Users.au 登录的指南。
+English and Simplified Chinese documentation for the Users.au identity platform.
 
-## Integrations · 应用接入
+- [English documentation](https://docs.users.au/)
+- [简体中文文档](https://docs.users.au/zh/)
+- Synology DSM with OpenID Connect — [English](integrations/synology-dsm.md) · [简体中文](zh/integrations/synology-dsm.md)
 
-| Application · 应用 | English | 中文 |
-| --- | --- | --- |
-| Synology DSM (OpenID Connect SSO) | [Guide](integrations/synology-dsm.md) | [指南](integrations/synology-dsm.zh-CN.md) |
+## Development
 
-## Related · 相关
+Use the Node.js version in `.nvmrc`.
 
-- Starter kits and client libraries · 起步模板与客户端库: <https://github.com/Users-au>
+```sh
+npm ci
+npm run dev
+npm run build
+npm run preview
+```
+
+English pages live in the repository root, `guide/` and `integrations/`. Add Chinese counterparts at the same path under `zh/`. Use example domains and placeholder credentials.
+
+## Deployment
+
+The GitHub Actions workflow builds on every pull request. A push to `main` publishes the checked revision to Vercel after the build and dependency audit pass. The workflow can also be run manually from `main`.
+
+Connect a Vercel project to the `Users-au/docs` GitHub repository with `main` as its production branch and add `docs.users.au` under its Domains settings. Apply the DNS record shown by Vercel and verify the domain. In the GitHub `production` environment set variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`, and the secret `VERCEL_TOKEN`. Use a token with access to the selected Vercel scope and restrict the environment's deployment branches to `main`. Vercel's automatic Git deployments are disabled in `vercel.json` so GitHub Actions controls publication. The workflow calls the [Vercel deployment API](https://vercel.com/docs/rest-api/deployments/create-a-new-deployment) with the Git commit SHA that passed its checks.
+
+Once the custom domain serves the docs, verify the English and Chinese entry points and update the public website's Docs links.

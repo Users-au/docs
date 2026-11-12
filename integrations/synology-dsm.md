@@ -1,6 +1,6 @@
 # Sign in to Synology DSM with Users.au (OpenID Connect)
 
-[中文](synology-dsm.zh-CN.md)
+[中文](../zh/integrations/synology-dsm.md)
 
 This guide connects Synology DSM's **SSO Client** to your Users.au project so people sign in to the NAS with their Users.au account. It also lists the errors you are likely to see and what each one means.
 
