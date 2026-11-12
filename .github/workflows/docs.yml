@@ -1,0 +1,83 @@
+name: Build and deploy documentation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Build and audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm audit
+      - run: npm run build
+      - name: Check public entry points
+        run: |
+          test -s .vitepress/dist/index.html
+          test -s .vitepress/dist/zh/index.html
+          test -s .vitepress/dist/integrations/synology-dsm.html
+          test -s .vitepress/dist/zh/integrations/synology-dsm.html
+          test -s .vitepress/dist/sitemap.xml
+
+  deploy:
+    name: Publish to Vercel
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency: docs-production
+    environment:
+      name: production
+      url: https://docs.users.au
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TELEMETRY_DISABLED: '1'
+      VERCEL_CLI_VERSION: '65.14.0'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Install Vercel CLI
+        run: npm install --global "vercel@$VERCEL_CLI_VERSION"
+      - name: Pull production settings
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          : "${VERCEL_ORG_ID:?Set VERCEL_ORG_ID in the production environment}"
+          : "${VERCEL_PROJECT_ID:?Set VERCEL_PROJECT_ID in the production environment}"
+          : "${VERCEL_TOKEN:?Set VERCEL_TOKEN in the production environment}"
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Build for Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+      - name: Deploy the prebuilt site
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
+      - name: Verify the public site
+        run: |
+          set -o pipefail
+          curl -fsS --retry 6 --retry-all-errors https://docs.users.au/ | grep -F 'Authentication documentation' >/dev/null
+          curl -fsS --retry 6 --retry-all-errors https://docs.users.au/zh/ | grep -F '身份验证文档' >/dev/null
+          curl -fsS --retry 6 --retry-all-errors https://docs.users.au/integrations/synology-dsm >/dev/null
+          curl -fsS --retry 6 --retry-all-errors https://docs.users.au/sitemap.xml >/dev/null
