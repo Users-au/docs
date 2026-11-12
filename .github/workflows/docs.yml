@@ -33,6 +33,18 @@ jobs:
           test -s .vitepress/dist/integrations/synology-dsm.html
           test -s .vitepress/dist/zh/integrations/synology-dsm.html
           test -s .vitepress/dist/sitemap.xml
+      - name: Include Vercel routing configuration
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          mv .vitepress/dist site
+          cp vercel.json site/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: docs-site
+          path: site/
+          if-no-files-found: error
+          retention-days: 3
 
   deploy:
     name: Publish to Vercel
@@ -51,10 +63,13 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Deploy the checked commit
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: docs-site
+          path: site
+      - name: Deploy the checked site
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           : "${VERCEL_ORG_ID:?Set VERCEL_ORG_ID in the production environment}"
           : "${VERCEL_PROJECT_ID:?Set VERCEL_PROJECT_ID in the production environment}"
@@ -66,31 +81,32 @@ jobs:
             exit 1
           fi
 
-          request="$(jq -nc \
-            --arg project "$VERCEL_PROJECT_ID" \
-            --arg sha "$GITHUB_SHA" \
-            --argjson repo "$REPOSITORY_ID" \
-            --slurpfile config vercel.json \
-            '{
-              name: "usersau-docs",
-              project: $project,
-              target: "production",
-              gitSource: {type: "github", repoId: $repo, ref: "main", sha: $sha},
-              projectSettings: ($config[0] | {
-                framework, installCommand, buildCommand, outputDirectory, nodeVersion: "24.x"
-              })
-            }')"
-          deployment="$(curl -fsS --max-time 30 \
-            --header "Authorization: Bearer $VERCEL_TOKEN" \
-            --header 'Content-Type: application/json' \
-            --data "$request" \
-            "https://api.vercel.com/v13/deployments?teamId=$VERCEL_ORG_ID")"
+          request_dir="$(mktemp -d)"
+          trap 'rm -f "$request_dir"/{body,headers,request}.json; rmdir "$request_dir"' EXIT
+          python3 .github/scripts/vercel-payload.py site "$VERCEL_PROJECT_ID" "$GITHUB_SHA" > "$request_dir/request.json"
+
+          if ! printf 'Authorization: Bearer %s\n' "$VERCEL_TOKEN" | curl -sS --fail-with-body --max-time 45 \
+            --header @- --header 'Content-Type: application/json' \
+            --dump-header "$request_dir/headers.json" \
+            --output "$request_dir/body.json" \
+            --data-binary "@$request_dir/request.json" \
+            "https://api.vercel.com/v13/deployments?teamId=$VERCEL_ORG_ID"; then
+            if [[ -s "$request_dir/body.json" ]]; then
+              jq -r '.error | "Vercel API: \(.code // "unknown") — \(.message // "no details")"' \
+                "$request_dir/body.json" >&2 || true
+            fi
+            if [[ -s "$request_dir/headers.json" ]]; then
+              grep -Ei '^(retry-after|x-ratelimit-(remaining|reset)):' "$request_dir/headers.json" >&2 || true
+            fi
+            exit 1
+          fi
+          deployment="$(cat "$request_dir/body.json")"
           deployment_id="$(jq -er '.id' <<< "$deployment")"
           echo "Vercel deployment $deployment_id for $GITHUB_SHA"
 
           for attempt in {1..60}; do
-            deployment="$(curl -fsS --retry 2 --max-time 15 \
-              --header "Authorization: Bearer $VERCEL_TOKEN" \
+            deployment="$(printf 'Authorization: Bearer %s\n' "$VERCEL_TOKEN" | curl -fsS --retry 2 --max-time 15 \
+              --header @- \
               "https://api.vercel.com/v13/deployments/$deployment_id?teamId=$VERCEL_ORG_ID")"
             case "$(jq -er '.readyState' <<< "$deployment")" in
               READY)
