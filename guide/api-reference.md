@@ -42,12 +42,12 @@ No authentication. Returns the issuer and endpoint URLs for the project that ser
   "scopes_supported": ["openid", "profile", "email", "phone", "address", "preferences:read", "preferences:write"],
   "id_token_signing_alg_values_supported": ["RS256"],
   "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
-  "code_challenge_methods_supported": ["plain", "S256"],
+  "code_challenge_methods_supported": ["S256"],
   "subject_types_supported": ["public"]
 }
 ```
 
-The real document also lists supported response types, response modes, grant types and claims. Use `S256` for PKCE even though `plain` is advertised. The `issuer` value is the exact string to compare with the `iss` claim of an ID token.
+The real document also lists the supported response type (`code`), response mode (`query`), grant types (`authorization_code`, `refresh_token`, `client_credentials`) and claims. The implicit, hybrid and device authorization flows are not available. The `issuer` value is the exact string to compare with the `iss` claim of an ID token.
 
 ## Signing keys (JWKS) {#jwks}
 
@@ -73,7 +73,7 @@ Send the user's browser here. The user signs in (if needed) and approves the req
 | `scope` | Yes | Space-separated. Use `openid profile email` for sign-in. Without `scope`, the default is `openid`. |
 | `state` | Yes | Fresh, unguessable, bound to the user's session. Verify and consume it on the callback. |
 | `code_challenge` | Yes for public clients; recommended for all | PKCE challenge. |
-| `code_challenge_method` | With `code_challenge` | `S256`. |
+| `code_challenge_method` | With `code_challenge` | `S256`. Applications using [current token security](#token-lifetimes) get `400 invalid_request` for `plain` or a missing method. |
 | `nonce` | Optional | Echoed in the ID token as `nonce`. |
 
 On success the browser is redirected to `redirect_uri?code=...&state=...`. If the user denies access or a scope is unknown, the browser is redirected to your `redirect_uri` with `error` (for example `invalid_scope`), `error_description` and `state`. An unknown Client ID or an unregistered `redirect_uri` is not redirected: the endpoint answers `401` with `{"error": "invalid_client"}`. A confidential client that uses [pushed authorization](#par) sends `client_id` and `request_uri` instead of the other parameters.
@@ -123,14 +123,23 @@ Failed requests return an OAuth 2.0 error object with `error` and `error_descrip
 ```json
 {
   "token_type": "Bearer",
-  "expires_in": 31536000,
+  "expires_in": 3600,
   "access_token": "eyJ0eXAiOi...",
   "refresh_token": "def50200...",
   "id_token": "eyJhbGciOi..."
 }
 ```
 
-`expires_in` is in seconds. By default, access tokens and refresh tokens are both valid for 365 days (`31536000` seconds) from issue. Read `expires_in` from the response instead of hard-coding the lifetime, and treat any `401` from a resource endpoint as the cue to refresh or sign in again.
+### Token lifetimes {#token-lifetimes}
+
+`expires_in` is in seconds. Lifetimes depend on the application's **Token security** setting in **Integration → OAuth Management**:
+
+| Setting | Access token | Refresh token | PKCE |
+| --- | --- | --- | --- |
+| Current (default for applications created from November 2026) | 1 hour (`3600`) | 30 days | `S256` only |
+| Legacy (applications created earlier) | 365 days (`31536000`) | 365 days | `S256` or `plain` |
+
+Legacy applications keep their lifetimes until an administrator turns on current token security; the change applies to tokens issued after that, including the next refresh. Read `expires_in` from the response instead of hard-coding the lifetime, and treat any `401` from a resource endpoint as the cue to refresh or sign in again. Before switching an application, check that it refreshes the access token when a request returns `401`.
 
 `id_token` is present when the granted scopes include `openid` and either the authorization request carried a `nonce`, or ID tokens are enabled for the application in **Integration → OAuth Management**. Without both a `nonce` and that setting, the response has no `id_token`; send a `nonce` with every OIDC sign-in. The ID token is returned again when a refresh token is exchanged for an application that has ID tokens enabled.
 
@@ -346,6 +355,7 @@ The reference works once and only for its purpose; it cannot be used at `/oauth/
 | --- | --- |
 | `invalid_client` at `/oauth/token` or `/oauth/par` | Wrong Client ID or secret, or a client type that cannot use the endpoint. |
 | `invalid_grant` at `/oauth/token` | The code was already used or expired, `code_verifier` does not match, or the refresh token was already used. |
+| `400 invalid_request` at `/oauth/authorize` | The application uses current token security and the request sent `plain` PKCE or no `code_challenge_method`. Use `S256`. |
 | `invalid_request` at `/oauth/token` | `redirect_uri` differs from the one used for authorization, or a parameter is missing. |
 | `invalid_scope` | A scope that Users.au does not support, or a refresh request that adds a scope. |
 | No `id_token` in the token response | No `nonce` was sent and ID tokens are not enabled for the application. |
@@ -355,4 +365,4 @@ The reference works once and only for its purpose; it cannot be used at `/oauth/
 
 ## Compatibility
 
-Existing integrations keep their behavior: endpoint paths, default scope, token and UserInfo shapes are stable. Breaking changes are published as a new versioned endpoint or an opt-in on the registered application, never as a silent change to these endpoints.
+Existing integrations keep their behavior: endpoint paths, default scope, token and UserInfo shapes are stable. Applications created before November 2026 keep 365-day tokens and plain PKCE until an administrator switches them to current token security. Breaking changes are published as a new versioned endpoint or an opt-in on the registered application, never as a silent change to these endpoints.

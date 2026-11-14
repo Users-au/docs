@@ -42,12 +42,12 @@ GET /.well-known/openid-configuration
   "scopes_supported": ["openid", "profile", "email", "phone", "address", "preferences:read", "preferences:write"],
   "id_token_signing_alg_values_supported": ["RS256"],
   "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
-  "code_challenge_methods_supported": ["plain", "S256"],
+  "code_challenge_methods_supported": ["S256"],
   "subject_types_supported": ["public"]
 }
 ```
 
-实际文档还列出支持的 response type、response mode、grant type 和 claim。虽然声明了 `plain`，请始终使用 `S256` 做 PKCE。`issuer` 的值就是与 ID Token 中 `iss` 比对的完整字符串。
+实际文档还列出支持的 response type（`code`）、response mode（`query`）、grant type（`authorization_code`、`refresh_token`、`client_credentials`）和 claim。不支持 implicit、hybrid 和设备授权流程。`issuer` 的值就是与 ID Token 中 `iss` 比对的完整字符串。
 
 ## 签名公钥（JWKS）{#jwks}
 
@@ -73,7 +73,7 @@ GET /oauth/authorize
 | `scope` | 是 | 以空格分隔。登录用 `openid profile email`。未提供 `scope` 时默认为 `openid`。 |
 | `state` | 是 | 每次新生成、不可预测并绑定用户会话。回调时验证并消费。 |
 | `code_challenge` | 公开客户端必填，其他建议使用 | PKCE challenge。 |
-| `code_challenge_method` | 与 `code_challenge` 同时 | `S256`。 |
+| `code_challenge_method` | 与 `code_challenge` 同时 | `S256`。使用[当前令牌安全设置](#token-lifetimes)的应用，发送 `plain` 或不发送方法时返回 `400 invalid_request`。 |
 | `nonce` | 可选 | 会原样出现在 ID Token 的 `nonce` 中。 |
 
 成功时浏览器被重定向到 `redirect_uri?code=...&state=...`。用户拒绝或 scope 未知时，浏览器会被重定向到你的 `redirect_uri`，并带有 `error`（例如 `invalid_scope`）、`error_description` 和 `state`。Client ID 未知或 `redirect_uri` 未登记时不会重定向，端点直接返回 `401` 和 `{"error": "invalid_client"}`。使用[推送授权](#par)的机密客户端只发送 `client_id` 和 `request_uri`，不再发送其他参数。
@@ -123,14 +123,23 @@ Content-Type: application/x-www-form-urlencoded
 ```json
 {
   "token_type": "Bearer",
-  "expires_in": 31536000,
+  "expires_in": 3600,
   "access_token": "eyJ0eXAiOi...",
   "refresh_token": "def50200...",
   "id_token": "eyJhbGciOi..."
 }
 ```
 
-`expires_in` 的单位是秒。默认情况下，Access Token 和 Refresh Token 自签发起都有效 365 天（`31536000` 秒）。请从响应中读取 `expires_in`，不要硬编码有效期；资源端点返回 `401` 时，刷新 Token 或重新登录。
+### Token 有效期 {#token-lifetimes}
+
+`expires_in` 的单位是秒。有效期取决于应用在 **Integration → OAuth Management** 中的 **Token security（令牌安全）** 设置：
+
+| 设置 | Access Token | Refresh Token | PKCE |
+| --- | --- | --- | --- |
+| 当前（2026 年 11 月起创建的应用默认使用） | 1 小时（`3600`） | 30 天 | 仅 `S256` |
+| 旧版（更早创建的应用） | 365 天（`31536000`） | 365 天 | `S256` 或 `plain` |
+
+旧版应用会保持原有效期，直到管理员开启当前令牌安全设置；切换后签发的 Token（包括下一次刷新）使用新有效期。请从响应中读取 `expires_in`，不要硬编码有效期；资源端点返回 `401` 时，刷新 Token 或重新登录。切换应用前，请确认它在请求返回 `401` 时会刷新 Access Token。
 
 获准的 scope 包含 `openid`，并且授权请求带有 `nonce`，或在 **Integration → OAuth Management** 中为该应用启用了 ID Token 时，才会返回 `id_token`。如果既没有 `nonce` 也没有启用该设置，响应中就没有 `id_token`，因此每次 OIDC 登录都应发送 `nonce`。对已启用 ID Token 的应用，用 Refresh Token 换取新 Token 时也会再次返回 ID Token。
 
@@ -346,6 +355,7 @@ Content-Type: application/x-www-form-urlencoded
 | --- | --- |
 | `/oauth/token` 或 `/oauth/par` 返回 `invalid_client` | Client ID 或密钥错误，或客户端类型不能使用该端点。 |
 | `/oauth/token` 返回 `invalid_grant` | 授权码已使用或过期、`code_verifier` 不匹配，或 Refresh Token 已使用过。 |
+| `/oauth/authorize` 返回 `400 invalid_request` | 应用使用当前令牌安全设置，而请求发送了 `plain` PKCE 或没有 `code_challenge_method`。请使用 `S256`。 |
 | `/oauth/token` 返回 `invalid_request` | `redirect_uri` 与授权时使用的不一致，或缺少参数。 |
 | `invalid_scope` | 请求了 Users.au 不支持的 scope，或刷新时增加了 scope。 |
 | 响应中没有 `id_token` | 没有发送 `nonce`，且该应用未启用 ID Token。 |
@@ -355,4 +365,4 @@ Content-Type: application/x-www-form-urlencoded
 
 ## 兼容性
 
-现有集成保持原有行为：端点路径、默认 scope、Token 和 UserInfo 的结构保持稳定。破坏性变更会作为新的版本化端点，或需要已登记应用主动启用，不会悄悄修改这些端点。
+现有集成保持原有行为：端点路径、默认 scope、Token 和 UserInfo 的结构保持稳定。2026 年 11 月之前创建的应用会保留 365 天 Token 和 plain PKCE，直到管理员切换到当前令牌安全设置。破坏性变更会作为新的版本化端点，或需要已登记应用主动启用，不会悄悄修改这些端点。
