@@ -12,11 +12,13 @@ Read the discovery document at your project's sign-in origin, for example `https
 | Pushed Authorization Request (PAR) | `POST /oauth/par` |
 | Start branded account or logout navigation | `POST /oauth/context` |
 
+For request and response details of every endpoint, see the [API reference](api-reference.md).
+
 ## Authorization-code sign-in
 
 1. Send the browser to the authorization endpoint with `response_type=code`, the Client ID, the registered `redirect_uri`, and requested scopes, for example `openid profile email`. Generate a new session-bound `state`, an S256 PKCE challenge, and a `nonce` when your OIDC client uses one.
 2. On the callback, verify and consume `state` before exchanging the code. Use the same redirect URI and the original PKCE verifier. Authenticate confidential clients on the backend.
-3. For an authorization-code exchange with the `openid` scope, Users.au issues an RS256-signed ID token. Use an OIDC library to verify its signature using the issuer's JWKS, expected issuer, audience, expiry and the nonce if one was sent.
+3. For an authorization-code exchange with the `openid` scope, Users.au issues an RS256-signed ID token when the request carried a `nonce` or the application has ID tokens enabled. Use an OIDC library to verify its signature using the issuer's JWKS, expected issuer, audience, expiry and the nonce if one was sent.
 4. Call UserInfo with the access token as `Authorization: Bearer <access-token>`. Match the returned `sub` to the validated ID token before using the profile. Link local users using `(iss, sub)`.
 
 Request the [claims and scopes](profiles-preferences.md) your application uses. Keep tokens, callback codes and secrets out of logs. In a browser app use a public client, S256 PKCE and a permitted application origin. A server-based integration can hold OAuth credentials on the server and expose a separate application session to the browser.
