@@ -15,7 +15,7 @@ Sign-in settings apply to the Users.au project. Test each enabled path with a re
 
 ## Sessions and account access
 
-The project session timeout is configured in minutes. It controls the hosted Users.au session. The connected application's session and OAuth token lifetime have their own settings. Test what happens when the hosted session expires while an application session is still open.
+The project session timeout is configured in minutes. It controls the hosted Users.au session. The connected application's session has its own settings. OAuth token lifetimes are set per application under **Token security** in **Integration → OAuth Management**; see [token lifetimes](api-reference.md#token-lifetimes). Test what happens when the hosted session expires while an application session is still open.
 
 In the user admin area you can manage accounts and inspect sign-in activity. Use [Profile collection](profiles-preferences.md) to choose which optional identity fields to collect and which ones administrators control.
 

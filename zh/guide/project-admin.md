@@ -15,7 +15,7 @@
 
 ## 会话与账户访问
 
-项目会话超时以分钟配置，控制 Users.au 的托管会话。接入应用的会话与 OAuth Token 有各自的有效期。测试托管会话到期时，仍持有应用会话的用户会看到什么。
+项目会话超时以分钟配置，控制 Users.au 的托管会话。接入应用的会话有自己的设置。OAuth Token 的有效期按应用在 **Integration → OAuth Management** 的 **Token security（令牌安全）** 中设置，见 [Token 有效期](api-reference.md#token-lifetimes)。测试托管会话到期时，仍持有应用会话的用户会看到什么。
 
 在用户管理中可以管理账户并查看登录活动。使用[资料收集](profiles-preferences.md)选择要收集的可选资料字段，以及只能由管理员编辑的字段。
 
