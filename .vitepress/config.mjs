@@ -5,6 +5,7 @@ const english = {
   integrate: 'Integrations',
   admin: 'Project administration',
   protocol: 'OAuth & OpenID Connect',
+  api: 'API reference',
   identity: 'Profiles & preferences',
 }
 
@@ -13,6 +14,7 @@ const chinese = {
   integrate: '应用接入',
   admin: '项目管理',
   protocol: 'OAuth 与 OpenID Connect',
+  api: 'API 参考',
   identity: '资料与界面偏好',
 }
 
@@ -30,6 +32,7 @@ function navigation(prefix, labels, website) {
           { text: labels.guide, link: `${prefix}/guide/getting-started` },
           { text: labels.admin, link: `${prefix}/guide/project-admin` },
           { text: labels.protocol, link: `${prefix}/guide/oauth-oidc` },
+          { text: labels.api, link: `${prefix}/guide/api-reference` },
           { text: labels.identity, link: `${prefix}/guide/profiles-preferences` },
         ],
       },
